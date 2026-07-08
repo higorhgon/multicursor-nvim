@@ -6,10 +6,10 @@ local NS    = state.NS
 local M = {}
 
 function M.setup_hl()
-  api.nvim_set_hl(0, 'MultiCursor',       { reverse   = true, default = false })
+  api.nvim_set_hl(0, 'MultiCursor',       { reverse   = true, default = true })
   -- Fake cursors cannot be rendered as a real thin bar in a terminal, so
   -- insert mode falls back to an underline instead of the reverse block.
-  api.nvim_set_hl(0, 'MultiCursorInsert', { underline = true, default = false })
+  api.nvim_set_hl(0, 'MultiCursorInsert', { underline = true, default = true })
 end
 
 function M.line_at(buf, row)
