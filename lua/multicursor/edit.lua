@@ -367,7 +367,7 @@ function M.apply_operator(op, keys)
   pcall(api.nvim_win_set_cursor, 0, { rrow, rcol })
   S.in_apply = false
 
-  if was_insert then
+  if was_insert or op == 'c' then
     vim.cmd(at_eol and 'startinsert!' or 'startinsert')
   end
 end
