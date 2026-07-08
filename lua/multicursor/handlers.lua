@@ -120,10 +120,11 @@ function M.handle_normal_key(k)
     return
   end
 
-  -- d / c with a motion (point mode): capture the motion, then replay
+  -- d / c with a motion (point mode): capture the motion, then replay.
+  -- Suppress the operator key; apply_operator handles main + fake cursors.
   if (k == 'd' or k == 'c') and #S.cursors > 0 then
     S.pending_op = { op = k, keys = '' }
-    return
+    return true
   end
 
   -- D / C — delete to end of line at every cursor (C: insert follows)

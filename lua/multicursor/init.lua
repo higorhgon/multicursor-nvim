@@ -297,7 +297,7 @@ function M.setup(opts)
         local op, keys = p.op, p.keys
         vim.schedule(function() if S.active then edit.apply_operator(op, keys) end end)
       end
-      return
+      return ''  -- suppress: apply_operator handles main cursor + fakes
     end
 
     -- Capture the 2nd key of f/t/F/T before any mode check, since Neovim

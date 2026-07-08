@@ -316,43 +316,52 @@ function M.op_status(op, keys)
   return 'done'
 end
 
--- Replays d<motion> (or the delete part of c<motion>) at every fake cursor.
--- For `c` the real cursor is already in insert mode; briefly leave it, apply,
--- and re-enter — a scratch extmark keeps the insert position accurate even
--- when fake-cursor deletions shift it.
+-- Applies op+keys to the main cursor and every fake cursor in normal mode.
+-- Both the operator key and the motion are suppressed by the key interceptor,
+-- so Neovim never processes them — we replay everything with normal! here.
+-- A scratch extmark tracks the main-cursor position through the fake-cursor
+-- edits so it stays accurate even when earlier deletions shift lines.
 function M.apply_operator(op, keys)
   if S.in_apply then return end
   S.in_apply = true
-  local buf        = api.nvim_get_current_buf()
-  local was_insert = api.nvim_get_mode().mode:sub(1, 1) == 'i'
-  local main       = api.nvim_win_get_cursor(0)
-  local mrow       = main[1] - 1
-  local at_eol     = main[2] >= #marks.line_at(buf, mrow)
-  local scratch    = api.nvim_buf_set_extmark(
-    buf, NS, mrow, math.min(main[2], #marks.line_at(buf, mrow)), {})
-
-  if was_insert then
-    api.nvim_feedkeys(api.nvim_replace_termcodes('<Esc>', true, false, true), 'nx', false)
-  end
+  local buf = api.nvim_get_current_buf()
 
   local mkeys = keys
   if op == 'c' then
-    -- match vim's own cw/cW special case (they behave like ce/cE)
+    -- cw/cW behave like ce/cE (vim's own special case)
     if keys == 'w' then mkeys = 'e' elseif keys == 'W' then mkeys = 'E' end
   end
 
+  local cmd = 'normal! d' .. (keys == op and op or mkeys)
+
+  -- Apply to main cursor first; this starts the undo entry.
+  local main = api.nvim_win_get_cursor(0)
+  local mrow = main[1] - 1
+  if op == 'c' and keys == op then          -- cc: clear the line, keep it
+    local ln = marks.line_at(buf, mrow)
+    if #ln > 0 then api.nvim_buf_set_text(buf, mrow, 0, mrow, #ln, { '' }) end
+    api.nvim_win_set_cursor(0, { mrow + 1, 0 })
+  else
+    pcall(vim.cmd, cmd)
+  end
+
+  local after   = api.nvim_win_get_cursor(0)
+  local at_eol  = after[2] >= #marks.line_at(buf, after[1] - 1)
+  local scratch = api.nvim_buf_set_extmark(buf, NS, after[1] - 1, after[2], {})
+
+  -- Apply to fake cursors, joining each edit into the same undo entry.
   for _, c in ipairs(S.cursors) do
     if c.buf == buf then
       local row, col = marks.mark_pos(c)
       if row then
         pcall(vim.cmd, 'undojoin')
         api.nvim_win_set_cursor(0, { row + 1, col })
-        if op == 'c' and keys == op then          -- cc: clear the line, keep it
+        if op == 'c' and keys == op then
           local ln = marks.line_at(buf, row)
           if #ln > 0 then api.nvim_buf_set_text(buf, row, 0, row, #ln, { '' }) end
           api.nvim_win_set_cursor(0, { row + 1, 0 })
         else
-          pcall(vim.cmd, 'normal! d' .. (keys == op and op or mkeys))
+          pcall(vim.cmd, cmd)
         end
         local p = api.nvim_win_get_cursor(0)
         marks.move_mark(c, p[1] - 1, p[2])
@@ -360,14 +369,14 @@ function M.apply_operator(op, keys)
     end
   end
 
-  local pos = api.nvim_buf_get_extmark_by_id(buf, NS, scratch, {})
+  local pos  = api.nvim_buf_get_extmark_by_id(buf, NS, scratch, {})
   pcall(api.nvim_buf_del_extmark, buf, NS, scratch)
-  local rrow = ((pos and pos[1]) or mrow) + 1
-  local rcol = (pos and pos[2]) or main[2]
+  local rrow = ((pos and pos[1]) or (after[1] - 1)) + 1
+  local rcol = (pos and pos[2]) or after[2]
   pcall(api.nvim_win_set_cursor, 0, { rrow, rcol })
   S.in_apply = false
 
-  if was_insert or op == 'c' then
+  if op == 'c' then
     vim.cmd(at_eol and 'startinsert!' or 'startinsert')
   end
 end
