@@ -46,7 +46,21 @@ function M.handle_normal_key(k)
     return
   end
 
-  -- x / X — delete char at / before cursor
+  -- x / X with word-mode selection: delete the entire selection (like d)
+  if (k == 'x' or k == 'X') and S.word then
+    vim.schedule(function()
+      if not S.active then return end
+      S.in_apply = true
+      local frow, fcol = edit.delete_regions_text()
+      api.nvim_win_set_cursor(0, { frow + 1, fcol })
+      S.in_apply = false
+      marks.clear_current_hl()
+      S.deactivate_fn()
+    end)
+    return true  -- suppress: Neovim must not see x or it deletes a single char
+  end
+
+  -- x / X — delete char at / before cursor (point mode)
   if k == 'x' then
     vim.schedule(function()
       if not S.active then return end
