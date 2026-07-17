@@ -53,9 +53,12 @@ function M.handle_normal_key(k)
       S.in_apply = true
       local frow, fcol = edit.delete_regions_text()
       api.nvim_win_set_cursor(0, { frow + 1, fcol })
-      S.in_apply = false
+      for _, c in ipairs(S.cursors) do c.word_len = 1 end
+      S.word = nil; S.word_len = 0
+      S.cur_row, S.cur_col = nil, nil
       marks.clear_current_hl()
-      S.deactivate_fn()
+      S.in_apply = false
+      for _, c in ipairs(S.cursors) do marks.refresh_mark(c) end
     end)
     return true  -- suppress: Neovim must not see x or it deletes a single char
   end
@@ -115,9 +118,12 @@ function M.handle_normal_key(k)
       S.in_apply = true
       local frow, fcol = edit.delete_regions_text()
       api.nvim_win_set_cursor(0, { frow + 1, fcol })
-      S.in_apply = false
+      for _, c in ipairs(S.cursors) do c.word_len = 1 end
+      S.word = nil; S.word_len = 0
+      S.cur_row, S.cur_col = nil, nil
       marks.clear_current_hl()
-      S.deactivate_fn()
+      S.in_apply = false
+      for _, c in ipairs(S.cursors) do marks.refresh_mark(c) end
     end)
     return true  -- suppress: Neovim must not see d or it enters operator-pending
   end
