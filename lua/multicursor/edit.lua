@@ -285,8 +285,9 @@ function M.apply_extend_motion(key)
   for _, c in ipairs(S.cursors) do
     if c.buf == buf and c.ve then
       api.nvim_win_set_cursor(0, { c.ve[1] + 1, c.ve[2] })
-      api.nvim_feedkeys('v' .. key .. esc, 'nx', false)
-      local p = api.nvim_win_get_cursor(0)
+      api.nvim_feedkeys('v' .. key, 'nx', false)
+      local p = api.nvim_win_get_cursor(0)   -- read moving end while still in visual
+      api.nvim_feedkeys(esc, 'nx', false)
       c.ve = { p[1] - 1, p[2] }
       update_extend_mark(c)
     end
