@@ -268,25 +268,31 @@ function M.extend_yank_collapse()
 end
 
 -- Mirror a motion on every selection end. The real cursor is in native
--- visual mode, so `normal!` would extend *its* selection: temporarily leave
--- visual, move each fake end, then restore the real selection with gv.
+-- visual mode, so we temporarily leave visual, apply the motion to each fake
+-- end *in visual mode* (matching real-cursor semantics — some motions like `w`
+-- behave differently in visual vs normal mode), then restore the real selection
+-- with gv. '< and '> are saved/restored so gv still targets the real cursor.
 function M.apply_extend_motion(key)
   if S.in_apply then return end
   if api.nvim_get_mode().mode ~= 'v' then return end
   S.in_apply = true
-  local buf = api.nvim_get_current_buf()
-  local esc = api.nvim_replace_termcodes('<Esc>', true, false, true)
+  local buf   = api.nvim_get_current_buf()
+  local esc   = api.nvim_replace_termcodes('<Esc>', true, false, true)
   api.nvim_feedkeys(esc, 'nx', false)
-  local main = api.nvim_win_get_cursor(0)
+  local main  = api.nvim_win_get_cursor(0)
+  local sv_lt = vim.fn.getpos("'<")
+  local sv_gt = vim.fn.getpos("'>")
   for _, c in ipairs(S.cursors) do
     if c.buf == buf and c.ve then
       api.nvim_win_set_cursor(0, { c.ve[1] + 1, c.ve[2] })
-      pcall(vim.cmd, 'normal! ' .. key)
+      api.nvim_feedkeys('v' .. key .. esc, 'nx', false)
       local p = api.nvim_win_get_cursor(0)
       c.ve = { p[1] - 1, p[2] }
       update_extend_mark(c)
     end
   end
+  vim.fn.setpos("'<", sv_lt)
+  vim.fn.setpos("'>", sv_gt)
   api.nvim_win_set_cursor(0, main)
   api.nvim_feedkeys('gv', 'nx', false)
   S.in_apply = false
