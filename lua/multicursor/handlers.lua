@@ -40,12 +40,14 @@ function M.handle_normal_key(k)
     return
   end
 
-  -- v — visual extend mode: every cursor grows a selection with the motions
+  -- v — visual extend mode: every cursor grows a selection with the motions.
+  -- S.extend is set synchronously and the extend mappings are installed right
+  -- away, so even a motion typed immediately after v lands on our mappings.
   if k == 'v' and #S.cursors > 0 then
-    -- Set S.extend synchronously so the very first motion key pressed after v
-    -- is intercepted. start_extend (queued here) always runs first in FIFO
-    -- order, initialising c.ve before apply_extend_motion uses it.
     S.extend = true
+    if not pcall(edit.install_extend_maps, api.nvim_get_current_buf()) then
+      S.extend_maps = nil  -- retried inside the scheduled start_extend
+    end
     vim.schedule(function() if S.active then edit.start_extend() end end)
     return
   end
@@ -185,46 +187,6 @@ function M.handle_normal_key(k)
         end
       end
     end)
-  end
-end
-
-function M.handle_visual_key(k)
-  if S.in_apply then return end
-
-  if edit.PENDING_MOTIONS[k] then
-    S.pending_motion = k
-    return
-  end
-
-  if k == ';' or k == ',' then
-    local lf = S.last_ft
-    if lf then
-      local mk = k == ',' and edit.REVERSE_FT[lf.mk] or lf.mk
-      local tc = lf.tc
-      vim.schedule(function()
-        if S.active and S.extend then edit.apply_extend_ft(mk, tc) end
-      end)
-    end
-    return
-  end
-
-  if edit.MOTION_KEYS[k] then
-    vim.schedule(function()
-      if S.active and S.extend then edit.apply_extend_motion(k) end
-    end)
-    return
-  end
-
-  if k == 'd' or k == 'x' or k == 'c' or k == 's' then
-    S.extend_op = k
-    vim.schedule(function() if S.active then edit.extend_delete() end end)
-    return
-  end
-
-  if k == 'y' then
-    S.extend_op = 'y'
-    vim.schedule(function() if S.active then edit.extend_yank_collapse() end end)
-    return
   end
 end
 

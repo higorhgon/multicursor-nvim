@@ -17,6 +17,7 @@ local M = {}
 
 function M.deactivate()
   regions.restore_esc_map()
+  edit.remove_extend_maps()
   marks.clear_current_hl()
   for _, c in ipairs(S.cursors) do
     pcall(api.nvim_buf_del_extmark, c.buf, NS, c.id)
@@ -319,10 +320,12 @@ function M.setup(opts)
       return
     end
 
+    -- Visual extend mode is handled by real buffer-local mappings (see
+    -- edit.install_extend_maps), not here: on_key can observe the same
+    -- keypress twice when another plugin (e.g. which-key) captures and
+    -- re-feeds the first key typed after entering visual mode.
     if mode == 'n' then
       if handlers.handle_normal_key(typed) then return '' end
-    elseif mode == 'v' and S.extend then
-      handlers.handle_visual_key(typed)
     end
   end, NS)
 

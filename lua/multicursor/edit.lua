@@ -191,10 +191,99 @@ local function update_extend_mark(c)
   })
 end
 
+-- Extend mode uses real buffer-local mappings instead of vim.on_key sniffing:
+-- plugins like which-key capture the first typed key after entering visual
+-- mode and re-feed it, which makes on_key observe the same keypress twice.
+-- A mapping runs exactly once per logical keypress, so it is immune to that.
+local EXTEND_ARROWS = { '<Left>', '<Right>', '<Up>', '<Down>' }
+
+function M.install_extend_maps(buf)
+  if S.extend_maps then return end
+  S.extend_maps = { buf = buf, lhs = {} }
+  local function map(lhs, fn)
+    vim.keymap.set('x', lhs, fn, {
+      buffer = buf, expr = true, nowait = true, silent = true,
+      replace_keycodes = false,
+    })
+    table.insert(S.extend_maps.lhs, lhs)
+  end
+
+  -- Plain motions: fall through to the native motion for the real cursor,
+  -- replay the same motion on every fake end.
+  local function map_motion(lhs, motion)
+    map(lhs, function()
+      vim.schedule(function()
+        if S.active and S.extend then M.apply_extend_motion(motion) end
+      end)
+      return motion
+    end)
+  end
+  for k in pairs(M.MOTION_KEYS) do map_motion(k, k) end
+  for _, a in ipairs(EXTEND_ARROWS) do
+    map_motion(a, api.nvim_replace_termcodes(a, true, false, true))
+  end
+
+  -- f/t/F/T: getchar() is allowed in expr mappings, so the target char is
+  -- collected here and the pair replayed on the fakes.
+  for mk in pairs(M.PENDING_MOTIONS) do
+    map(mk, function()
+      local ok, tc = pcall(vim.fn.getcharstr)
+      if not ok or tc == '' or tc == '\27' or tc == '\3' or tc:byte(1) == 0x80 then
+        return ''
+      end
+      S.last_ft = { mk = mk, tc = tc }
+      vim.schedule(function()
+        if S.active and S.extend then M.apply_extend_ft(mk, tc) end
+      end)
+      return mk .. tc
+    end)
+  end
+
+  -- ; and , replay the last f/t/F/T.
+  for _, k in ipairs({ ';', ',' }) do
+    map(k, function()
+      local lf = S.last_ft
+      if lf then
+        local mk = k == ',' and M.REVERSE_FT[lf.mk] or lf.mk
+        local tc = lf.tc
+        vim.schedule(function()
+          if S.active and S.extend then M.apply_extend_ft(mk, tc) end
+        end)
+      end
+      return k
+    end)
+  end
+
+  -- Operators: the native key handles the real selection, the scheduled call
+  -- mirrors it on the fake selections.
+  for _, k in ipairs({ 'd', 'x', 'c', 's' }) do
+    map(k, function()
+      S.extend_op = k
+      vim.schedule(function() if S.active then M.extend_delete() end end)
+      return k
+    end)
+  end
+  map('y', function()
+    S.extend_op = 'y'
+    vim.schedule(function() if S.active then M.extend_yank_collapse() end end)
+    return 'y'
+  end)
+end
+
+function M.remove_extend_maps()
+  local em = S.extend_maps
+  if not em then return end
+  S.extend_maps = nil
+  for _, lhs in ipairs(em.lhs) do
+    pcall(vim.keymap.del, 'x', lhs, { buffer = em.buf })
+  end
+end
+
 function M.start_extend()
   if S.word then regions.collapse_word_mode() end
   local buf = api.nvim_get_current_buf()
   S.extend, S.extend_op = true, nil
+  M.install_extend_maps(buf)
   for _, c in ipairs(S.cursors) do
     if c.buf == buf then
       local row, col = marks.mark_pos(c)
@@ -211,6 +300,7 @@ end
 function M.cancel_extend()
   if not S.extend then return end
   S.extend, S.extend_op = false, nil
+  M.remove_extend_maps()
   for _, c in ipairs(S.cursors) do
     if c.ve then
       local row, col = c.ve[1], c.ve[2]
@@ -250,6 +340,7 @@ function M.extend_delete()
     c.word_len = 1
   end
   S.extend, S.extend_op = false, nil
+  M.remove_extend_maps()
   S.in_apply = false
   for _, c in ipairs(S.cursors) do marks.refresh_mark(c) end
 end
@@ -265,6 +356,7 @@ function M.extend_yank_collapse()
     end
   end
   S.extend, S.extend_op = false, nil
+  M.remove_extend_maps()
 end
 
 -- Mirror a motion on every selection end. The real cursor is in native
