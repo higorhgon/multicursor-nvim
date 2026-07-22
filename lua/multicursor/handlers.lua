@@ -42,6 +42,10 @@ function M.handle_normal_key(k)
 
   -- v — visual extend mode: every cursor grows a selection with the motions
   if k == 'v' and #S.cursors > 0 then
+    -- Set S.extend synchronously so the very first motion key pressed after v
+    -- is intercepted. start_extend (queued here) always runs first in FIFO
+    -- order, initialising c.ve before apply_extend_motion uses it.
+    S.extend = true
     vim.schedule(function() if S.active then edit.start_extend() end end)
     return
   end
